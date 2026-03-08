@@ -1,6 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import dynamic from 'next/dynamic'
+import WarRoom from '@/components/WarRoom'
+
+const SituationMap = dynamic(() => import('@/components/SituationMap'), { ssr: false })
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +84,6 @@ const WAR_STATS = {
   targetsStruck: { value: '3,000+', source: 'CENTCOM' },
   warshipsDestroyed: { value: 43, source: 'CENTCOM' },
   hormuz: { status: 'Near-Halt', pctCapacity: 15 },
-  oilPrice: { label: 'Brent Crude', value: '$83/bbl', change: '+15%' },
   operationStart: 'Feb 28, 2026',
   operationNames: ['Epic Fury (US)', 'Roar of the Lion (Israel) / Shield of Judah (Joint)'],
   usAssets: { troops: '50,000+', carriers: 2, fighters: '200+', bombers: true },
@@ -89,12 +92,12 @@ const WAR_STATS = {
 const RED_LINES = [
   { id: 1, label: 'Iran strikes Dimona nuclear reactor', status: 'threatened', severity: 5, detail: 'Senior IRGC official threatened Dimona if regime change pursued' },
   { id: 2, label: 'Iran deploys chemical/biological weapons', status: 'watch', severity: 5, detail: 'No evidence yet. Maximum red line for US/Israel escalation.' },
-  { id: 3, label: 'China enters conflict directly', status: 'watch', severity: 5, detail: 'Xi prioritizing summit with Trump. Unlikely near-term but watching PLA movements.' },
-  { id: 4, label: 'Strait of Hormuz fully closed (weeks)', status: 'near', severity: 4, detail: 'Currently at ~15% capacity. Full closure = $120+/bbl, global recession risk.' },
-  { id: 5, label: 'Russia opens second front (Ukraine surge)', status: 'watch', severity: 4, detail: 'Russia benefiting economically. No military escalation linked to Iran war yet.' },
-  { id: 6, label: 'Iran nuclear breakout / dirty bomb', status: 'watch', severity: 5, detail: 'Program being actively degraded by strikes. Risk reduced but not zero.' },
-  { id: 7, label: 'Gulf state oil infrastructure attacked', status: 'near', severity: 4, detail: 'Qatar LNG facilities already hit (drone strikes on Ras Laffan, Mesaieed).' },
-  { id: 8, label: 'US domestic cyberattack (critical infra)', status: 'active', severity: 3, detail: 'Seedworm/MuddyWater launched wiper attacks on US banks, airports Mar 3.' },
+  { id: 3, label: 'China enters conflict directly', status: 'watch', severity: 5, detail: 'Xi prioritizing summit with Trump. Unlikely near-term.' },
+  { id: 4, label: 'Strait of Hormuz fully closed (weeks)', status: 'near', severity: 4, detail: 'Currently at ~15% capacity. Full closure = $120+/bbl.' },
+  { id: 5, label: 'Russia opens second front (Ukraine surge)', status: 'watch', severity: 4, detail: 'Russia benefiting economically. No military escalation yet.' },
+  { id: 6, label: 'Iran nuclear breakout / dirty bomb', status: 'watch', severity: 5, detail: 'Program being actively degraded by strikes. Risk reduced.' },
+  { id: 7, label: 'Gulf state oil infrastructure attacked', status: 'near', severity: 4, detail: 'Qatar LNG facilities already hit (Ras Laffan, Mesaieed).' },
+  { id: 8, label: 'US domestic cyberattack (critical infra)', status: 'active', severity: 3, detail: 'Seedworm/MuddyWater active on US banks, airports.' },
 ]
 
 const ESCALATION_EVENTS = [
@@ -117,7 +120,7 @@ const ESCALATION_EVENTS = [
 function ConfidenceBadge({ label, color, score }: { label: string; color: string; score: number }) {
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold" style={{ backgroundColor: color + '22', color, border: `1px solid ${color}44` }}>
-      <span className="w-1.5 h-1.5 rounded-full animate-pulse-red" style={{ backgroundColor: color }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
       {label} {score}%
     </span>
   )
@@ -191,14 +194,14 @@ function FeedTab() {
   function formatDate(s: string) {
     if (!s) return ''
     try {
-      const y = s.slice(0,4), m = s.slice(4,6), d = s.slice(6,8), h = s.slice(9,11), mi = s.slice(11,13)
+      const d = s.slice(6,8), m = s.slice(4,6), h = s.slice(9,11), mi = s.slice(11,13)
       return `${d}/${m} ${h}:${mi}Z`
     } catch { return s }
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1.5 flex-wrap">
           {countries.map(c => (
             <button key={c} onClick={() => setFilter(c)}
@@ -217,12 +220,12 @@ function FeedTab() {
           <span className="text-[#6B7280] text-sm font-mono">Fetching OSINT feeds…</span>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-[#6B7280] font-mono text-sm">No articles found for filter: {filter}</div>
+        <div className="text-center py-12 text-[#6B7280] font-mono text-sm">No articles for: {filter}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((a, i) => (
             <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-              className="block p-3 rounded-lg border border-[#1E1E28] bg-[#141418] hover:bg-[#1A1A20] transition-all group animate-slide-in">
+              className="block p-3 rounded-lg border border-[#1E1E28] bg-[#141418] hover:bg-[#1A1A20] transition-all group">
               <div className="flex items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-[#E8E8E8] group-hover:text-[#00D4FF] transition-colors leading-snug line-clamp-2">{a.title}</p>
@@ -265,15 +268,11 @@ function NationsTab() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="w-24 hidden sm:block">
-                  <ThreatMeter level={c.threatLevel} />
-                </div>
+                <div className="w-24 hidden sm:block"><ThreatMeter level={c.threatLevel} /></div>
                 <span className="text-[#6B7280] text-sm">{expanded === c.id ? '▲' : '▼'}</span>
               </div>
             </div>
-            <div className="mt-2 sm:hidden">
-              <ThreatMeter level={c.threatLevel} />
-            </div>
+            <div className="mt-2 sm:hidden"><ThreatMeter level={c.threatLevel} /></div>
           </button>
 
           {expanded === c.id && (
@@ -282,9 +281,7 @@ function NationsTab() {
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="bg-[#0D0D0F] rounded-lg p-3">
                   <div className="text-[10px] text-[#6B7280] font-mono mb-1">CASUALTIES (CONFIRMED)</div>
-                  <div className="text-lg font-bold font-mono" style={{ color: c.color }}>
-                    {c.casualties.confirmed !== null ? c.casualties.confirmed.toLocaleString() : '—'}
-                  </div>
+                  <div className="text-lg font-bold font-mono" style={{ color: c.color }}>{c.casualties.confirmed !== null ? c.casualties.confirmed.toLocaleString() : '—'}</div>
                   {c.casualties.wounded != null && <div className="text-[11px] text-[#6B7280]">+{c.casualties.wounded} wounded</div>}
                 </div>
                 <div className="bg-[#0D0D0F] rounded-lg p-3">
@@ -294,10 +291,8 @@ function NationsTab() {
                 </div>
               </div>
               <div className="bg-[#0D0D0F] rounded-lg p-3 mb-3">
-                <div className="text-[10px] text-[#6B7280] font-mono mb-2">NUCLEAR STATUS</div>
-                <div className="text-xs font-mono" style={{ color: c.nuclear.status.includes('threat') || c.nuclear.status.includes('Attack') ? '#C0392B' : c.nuclear.status.includes('Moderniz') ? '#F59E0B' : '#27AE60' }}>
-                  {c.nuclear.status}
-                </div>
+                <div className="text-[10px] text-[#6B7280] font-mono mb-1">NUCLEAR STATUS</div>
+                <div className="text-xs font-mono" style={{ color: c.nuclear.status.includes('threat') || c.nuclear.status.includes('Attack') ? '#C0392B' : c.nuclear.status.includes('Moderniz') ? '#F59E0B' : '#27AE60' }}>{c.nuclear.status}</div>
               </div>
               <div className="space-y-1.5">
                 <div className="text-[10px] text-[#6B7280] font-mono">KEY INTELLIGENCE</div>
@@ -329,7 +324,6 @@ function NationsTab() {
 function WarStatsTab() {
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-mono text-sm font-bold text-[#E8E8E8]">CONFLICT STATISTICS</h2>
@@ -341,17 +335,11 @@ function WarStatsTab() {
         </div>
       </div>
 
-      {/* Operations */}
       <div className="bg-[#141418] rounded-lg p-3 border border-[#1E1E28]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-2">OPERATION NAMES</div>
-        <div className="space-y-1">
-          {WAR_STATS.operationNames.map((n, i) => (
-            <div key={i} className="text-xs font-mono text-[#00D4FF]">▸ {n}</div>
-          ))}
-        </div>
+        {WAR_STATS.operationNames.map((n, i) => <div key={i} className="text-xs font-mono text-[#00D4FF]">▸ {n}</div>)}
       </div>
 
-      {/* Casualty comparison */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#C0392B33]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-3">CASUALTIES — CONFIRMED vs CLAIMED</div>
         <div className="space-y-3">
@@ -369,12 +357,6 @@ function WarStatsTab() {
             </div>
           </div>
           <div className="border-t border-[#1E1E28] pt-3">
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-xs text-[#E8E8E8]">🇺🇸 US Wounded (Pentagon)</span>
-              <span className="font-mono font-bold text-[#F39C12]">{WAR_STATS.usWounded.confirmed} confirmed</span>
-            </div>
-          </div>
-          <div className="border-t border-[#1E1E28] pt-3">
             <div className="flex justify-between items-center">
               <span className="text-xs text-[#E8E8E8]">🇮🇷 Iran Killed (Tasnim)</span>
               <div className="flex items-center gap-2">
@@ -386,7 +368,6 @@ function WarStatsTab() {
         </div>
       </div>
 
-      {/* Strike stats */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#141418] rounded-lg p-3 border border-[#1E1E28]">
           <div className="text-[10px] text-[#6B7280] font-mono mb-1">TARGETS STRUCK</div>
@@ -400,31 +381,24 @@ function WarStatsTab() {
         </div>
       </div>
 
-      {/* Hormuz status */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#C0392B44]">
         <div className="flex justify-between items-center mb-2">
           <div className="text-[10px] text-[#6B7280] font-mono">STRAIT OF HORMUZ CAPACITY</div>
           <div className="text-xs font-mono text-[#C0392B] font-bold">{WAR_STATS.hormuz.status}</div>
         </div>
-        <div className="threat-bar">
-          <div className="threat-fill bg-[#C0392B]" style={{ width: `${WAR_STATS.hormuz.pctCapacity}%` }} />
+        <div className="h-2 bg-[#1E1E28] rounded-full overflow-hidden">
+          <div className="h-full bg-[#C0392B] rounded-full" style={{ width: `${WAR_STATS.hormuz.pctCapacity}%` }} />
         </div>
         <div className="flex justify-between mt-1">
           <span className="text-[10px] text-[#6B7280] font-mono">{WAR_STATS.hormuz.pctCapacity}% flowing</span>
-          <span className="text-[10px] text-[#6B7280] font-mono">Carries 20% global oil supply</span>
+          <span className="text-[10px] text-[#6B7280] font-mono">Carries 20% global oil</span>
         </div>
       </div>
 
-      {/* US assets */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-3">US MILITARY ASSETS DEPLOYED</div>
         <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Troops', value: WAR_STATS.usAssets.troops },
-            { label: 'Carrier Groups', value: WAR_STATS.usAssets.carriers.toString() },
-            { label: 'Fighter Jets', value: WAR_STATS.usAssets.fighters },
-            { label: 'Strategic Bombers', value: WAR_STATS.usAssets.bombers ? 'YES' : 'NO' },
-          ].map((s, i) => (
+          {[{ label: 'Troops', value: WAR_STATS.usAssets.troops }, { label: 'Carrier Groups', value: WAR_STATS.usAssets.carriers.toString() }, { label: 'Fighter Jets', value: WAR_STATS.usAssets.fighters }, { label: 'Strategic Bombers', value: 'YES' }].map((s, i) => (
             <div key={i}>
               <div className="text-[10px] text-[#6B7280] font-mono">{s.label}</div>
               <div className="text-sm font-mono font-bold text-[#E8E8E8]">{s.value}</div>
@@ -433,7 +407,7 @@ function WarStatsTab() {
         </div>
       </div>
 
-      {/* Escalation timeline */}
+      {/* Escalation Timeline */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-3">ESCALATION TIMELINE</div>
         <div className="overflow-x-auto pb-2">
@@ -495,22 +469,7 @@ function MarketsTab() {
 
   useEffect(() => { load(); const t = setInterval(load, 300000); return () => clearInterval(t) }, [load])
 
-  function fmt(v: number | undefined, dec = 2) {
-    if (v == null) return '—'
-    return v.toFixed(dec)
-  }
-
-  const commodities = [
-    { key: 'brent', label: 'Brent Crude', unit: '/bbl', warNote: 'Hormuz disruption driver' },
-    { key: 'gold', label: 'Gold Spot', unit: '/oz', warNote: 'War hedge indicator' },
-  ]
-
-  const defence = [
-    { key: 'LMT', label: 'Lockheed Martin' },
-    { key: 'RTX', label: 'RTX Corp (Raytheon)' },
-    { key: 'NOC', label: 'Northrop Grumman' },
-    { key: 'BA', label: 'Boeing' },
-  ]
+  const fmt = (v: number | undefined, dec = 2) => v != null ? v.toFixed(dec) : '—'
 
   return (
     <div className="space-y-4">
@@ -529,7 +488,10 @@ function MarketsTab() {
           <div className="bg-[#141418] rounded-lg p-4 border border-[#F39C1233]">
             <div className="text-[10px] text-[#6B7280] font-mono mb-3">COMMODITIES</div>
             <div className="space-y-4">
-              {commodities.map(c => {
+              {[
+                { key: 'brent', label: 'Brent Crude', unit: '/bbl', note: 'Hormuz disruption driver' },
+                { key: 'gold', label: 'Gold Spot', unit: '/oz', note: 'War hedge indicator' },
+              ].map(c => {
                 const d = markets[c.key]
                 const pos = d ? d.change >= 0 : false
                 return (
@@ -537,16 +499,11 @@ function MarketsTab() {
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-semibold text-[#E8E8E8]">{c.label}</div>
-                        <div className="text-[11px] text-[#6B7280]">{c.warNote}</div>
+                        <div className="text-[11px] text-[#6B7280]">{c.note}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-mono font-bold text-[#F39C12]">
-                          ${d ? fmt(d.price) : '—'}
-                          <span className="text-sm font-normal text-[#6B7280]">{c.unit}</span>
-                        </div>
-                        <div className={`text-xs font-mono ${pos ? 'text-[#27AE60]' : 'text-[#C0392B]'}`}>
-                          {d ? `${pos ? '+' : ''}${fmt(d.change)}%` : '—'}
-                        </div>
+                        <div className="text-xl font-mono font-bold text-[#F39C12]">${d ? fmt(d.price) : '—'}<span className="text-sm font-normal text-[#6B7280]">{c.unit}</span></div>
+                        <div className={`text-xs font-mono ${pos ? 'text-[#27AE60]' : 'text-[#C0392B]'}`}>{d ? `${pos ? '+' : ''}${fmt(d.change)}%` : '—'}</div>
                       </div>
                     </div>
                     {c.key === 'brent' && (
@@ -563,7 +520,7 @@ function MarketsTab() {
           <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
             <div className="text-[10px] text-[#6B7280] font-mono mb-3">DEFENCE STOCKS</div>
             <div className="space-y-3">
-              {defence.map(d => {
+              {[{ key: 'LMT', label: 'Lockheed Martin' }, { key: 'RTX', label: 'RTX Corp (Raytheon)' }, { key: 'NOC', label: 'Northrop Grumman' }, { key: 'BA', label: 'Boeing' }].map(d => {
                 const data = markets[d.key]
                 const pos = data ? data.change >= 0 : false
                 return (
@@ -574,26 +531,12 @@ function MarketsTab() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-mono font-bold text-[#E8E8E8]">${data ? fmt(data.price) : '—'}</div>
-                      <div className={`text-xs font-mono ${pos ? 'text-[#27AE60]' : 'text-[#C0392B]'}`}>
-                        {data ? `${pos ? '+' : ''}${fmt(data.change)}%` : '—'}
-                      </div>
+                      <div className={`text-xs font-mono ${pos ? 'text-[#27AE60]' : 'text-[#C0392B]'}`}>{data ? `${pos ? '+' : ''}${fmt(data.change)}%` : '—'}</div>
                     </div>
                   </div>
                 )
               })}
             </div>
-          </div>
-
-          {/* Geopolitical Mood Index */}
-          <div className="bg-[#141418] rounded-lg p-4 border border-[#C0392B44]">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[10px] text-[#6B7280] font-mono">GEOPOLITICAL MOOD INDEX</div>
-              <div className="text-2xl font-mono font-bold text-[#C0392B]">8.2 / 10</div>
-            </div>
-            <div className="threat-bar mb-2">
-              <div className="threat-fill" style={{ width: '82%', backgroundColor: '#C0392B' }} />
-            </div>
-            <p className="text-[11px] text-[#6B7280]">Composite score — nuclear threats, active conflict, Hormuz disruption, cyber attacks, commodity spike. Highest since 2003 Iraq invasion.</p>
           </div>
 
           <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
@@ -609,10 +552,7 @@ function MarketsTab() {
               ].map(b => (
                 <div key={b.label} className="flex items-center gap-2 text-[11px]">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
-                  <div>
-                    <span style={{ color: b.color }} className="font-mono font-bold">{b.label}</span>
-                    <span className="text-[#6B7280] ml-1">· {b.outlets}</span>
-                  </div>
+                  <div><span style={{ color: b.color }} className="font-mono font-bold">{b.label}</span><span className="text-[#6B7280] ml-1">· {b.outlets}</span></div>
                 </div>
               ))}
             </div>
@@ -627,17 +567,14 @@ function MarketsTab() {
 // ─── Tab: Nuclear ─────────────────────────────────────────────────────────────
 
 function NuclearTab() {
-  const nuclearData = COUNTRIES.map(c => c.nuclear && { ...c.nuclear, name: c.name, flag: c.flag, color: c.color, warheads: c.nuclear.warheads })
-
   return (
     <div className="space-y-4">
       <div className="p-3 bg-[#C0392B11] border border-[#C0392B33] rounded-lg">
         <p className="text-[11px] text-[#C0392B] font-mono leading-relaxed">
-          ⚠ NUCLEAR WATCH ACTIVE — Iran has threatened Dimona (Israel). China modernizing at fastest pace in history. Monitor for posture changes.
+          ⚠ NUCLEAR WATCH ACTIVE — Iran threatened Dimona. China modernizing fastest in history.
         </p>
       </div>
 
-      {/* Warhead chart */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-3">OPERATIONAL WARHEADS</div>
         <div className="space-y-3">
@@ -646,7 +583,7 @@ function NuclearTab() {
             { name: 'Russia', flag: '🇷🇺', warheads: 4300, max: 5177, color: '#8B5CF6', note: 'Elevated alert (Ukraine)' },
             { name: 'China', flag: '🇨🇳', warheads: 600, max: 5177, color: '#F59E0B', note: '→ 1,500 by 2035' },
             { name: 'Israel', flag: '🇮🇱', warheads: 90, max: 5177, color: '#06B6D4', note: 'Unconfirmed (Samson)' },
-            { name: 'Iran', flag: '🇮🇷', warheads: 0, max: 5177, color: '#C0392B', note: 'Pre-nuclear, program degraded' },
+            { name: 'Iran', flag: '🇮🇷', warheads: 0, max: 5177, color: '#C0392B', note: 'Pre-nuclear, degraded' },
           ].map(c => (
             <div key={c.name}>
               <div className="flex items-center justify-between mb-1">
@@ -656,23 +593,20 @@ function NuclearTab() {
                   <span className="text-[11px] text-[#6B7280] ml-2">{c.note}</span>
                 </div>
               </div>
-              <div className="threat-bar">
-                <div className="threat-fill transition-all duration-700" style={{ width: `${(c.warheads / c.max) * 100}%`, backgroundColor: c.color }} />
+              <div className="h-2 bg-[#1E1E28] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(c.warheads / c.max) * 100}%`, backgroundColor: c.color }} />
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* China modernization */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#F59E0B33]">
-        <div className="text-[10px] text-[#6B7280] font-mono mb-3">🇨🇳 CHINA NUCLEAR MODERNIZATION TRACK</div>
+        <div className="text-[10px] text-[#6B7280] font-mono mb-3">🇨🇳 CHINA MODERNIZATION TRACK</div>
         <div className="space-y-2">
           {[
-            { year: '2023', warheads: 410, pct: 27 },
-            { year: '2024', warheads: 500, pct: 33 },
-            { year: '2025', warheads: 600, pct: 40 },
-            { year: '2030 (proj)', warheads: 1000, pct: 67 },
+            { year: '2023', warheads: 410, pct: 27 }, { year: '2024', warheads: 500, pct: 33 },
+            { year: '2025', warheads: 600, pct: 40 }, { year: '2030 (proj)', warheads: 1000, pct: 67 },
             { year: '2035 (proj)', warheads: 1500, pct: 100 },
           ].map(y => (
             <div key={y.year}>
@@ -680,25 +614,23 @@ function NuclearTab() {
                 <span className="text-[11px] font-mono text-[#6B7280]">{y.year}</span>
                 <span className="text-[11px] font-mono font-bold text-[#F59E0B]">{y.warheads.toLocaleString()}</span>
               </div>
-              <div className="threat-bar">
-                <div className="threat-fill" style={{ width: `${y.pct}%`, backgroundColor: '#F59E0B' }} />
+              <div className="h-1.5 bg-[#1E1E28] rounded-full overflow-hidden">
+                <div className="h-full bg-[#F59E0B] rounded-full" style={{ width: `${y.pct}%` }} />
               </div>
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-[#6B7280] mt-3">Fastest-growing arsenal globally. Covert test 2025 linked to new weapons generation. Moving toward launch-on-warning posture.</p>
       </div>
 
-      {/* Doctrine comparison */}
       <div className="bg-[#141418] rounded-lg p-4 border border-[#1E1E28]">
         <div className="text-[10px] text-[#6B7280] font-mono mb-3">NUCLEAR DOCTRINES</div>
         <div className="space-y-3">
           {[
             { country: '🇺🇸 USA', doctrine: 'Flexible Response', detail: 'Retains first-use option. Full triad. NPT signatory.' },
-            { country: '🇷🇺 Russia', doctrine: 'Escalate to De-escalate', detail: 'Low-yield tactical nukes. First-use possible under existential threat. Elevated alert (Ukraine).' },
+            { country: '🇷🇺 Russia', doctrine: 'Escalate to De-escalate', detail: 'Low-yield tactical nukes. First-use possible under existential threat.' },
             { country: '🇨🇳 China', doctrine: 'Shifting from No-First-Use', detail: 'Historically minimal deterrence. Now building launch-on-warning posture + tactical nukes.' },
-            { country: '🇮🇱 Israel', doctrine: 'Samson Option (ambiguous)', detail: 'Nuclear ambiguity — never confirmed. Last resort = existential threat. 90 warheads (est). Dimona now threatened.' },
-            { country: '🇮🇷 Iran', doctrine: 'None (Pre-nuclear)', detail: 'Program being degraded by US/Israeli strikes. Has enriched to 83.7% U-235 (near weapons grade). 0 warheads.' },
+            { country: '🇮🇱 Israel', doctrine: 'Samson Option (ambiguous)', detail: '~90 warheads (est). Nuclear ambiguity. Dimona now threatened by Iran.' },
+            { country: '🇮🇷 Iran', doctrine: 'None (Pre-nuclear)', detail: 'Program being degraded by strikes. 83.7% U-235 enrichment achieved.' },
           ].map(d => (
             <div key={d.country} className="border-l-2 border-[#1E1E28] pl-3">
               <div className="text-xs font-mono font-bold text-[#E8E8E8]">{d.country}</div>
@@ -709,18 +641,14 @@ function NuclearTab() {
         </div>
       </div>
 
-      {/* Dimona alert */}
-      <div className="bg-[#141418] rounded-lg p-4 border border-[#C0392B55] card-red">
+      <div className="bg-[#141418] rounded-lg p-4 border border-[#C0392B55]" style={{ boxShadow: '0 0 0 1px rgba(192,57,43,0.3)' }}>
         <div className="flex items-center gap-2 mb-2">
           <div className="w-2 h-2 rounded-full bg-[#C0392B] animate-pulse-red" />
           <div className="text-[10px] font-mono font-bold text-[#C0392B]">DIMONA THREAT — ELEVATED</div>
         </div>
         <p className="text-[11px] text-[#A0A0B0] leading-relaxed">
-          Iran has explicitly threatened to strike Israel's Negev Nuclear Research Center (Dimona) if the US-Israel regime change push continues. Dimona is not under IAEA safeguards. A successful strike would trigger Israel's Samson Option threshold and potentially nuclear escalation.
+          Iran has explicitly threatened to strike Israel's Negev Nuclear Research Center (Dimona) if regime change continues. Not under IAEA safeguards. A successful strike would trigger Israel's Samson Option and risk nuclear escalation.
         </p>
-        <div className="mt-2 pt-2 border-t border-[#C0392B22]">
-          <span className="text-[11px] font-mono text-[#C0392B]">Threat level: THREATENED (not yet crossed)</span>
-        </div>
       </div>
     </div>
   )
@@ -729,15 +657,24 @@ function NuclearTab() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'feed', label: 'Live Feed', icon: '📡' },
+  { id: 'warroom', label: 'War Room', icon: '🎯' },
+  { id: 'map', label: 'Map', icon: '🗺️' },
+  { id: 'feed', label: 'Feed', icon: '📡' },
   { id: 'nations', label: 'Nations', icon: '🌍' },
-  { id: 'war', label: 'War Stats', icon: '⚔️' },
-  { id: 'markets', label: 'Markets', icon: '📈' },
+  { id: 'stats', label: 'Stats', icon: '⚔️' },
   { id: 'nuclear', label: 'Nuclear', icon: '☢️' },
 ]
 
+const MOBILE_TABS = [
+  { id: 'warroom', label: 'War Room', icon: '🎯' },
+  { id: 'map', label: 'Map', icon: '🗺️' },
+  { id: 'feed', label: 'Feed', icon: '📡' },
+  { id: 'nations', label: 'Nations', icon: '🌍' },
+  { id: 'stats', label: 'Stats', icon: '⚔️' },
+]
+
 export default function Page() {
-  const [tab, setTab] = useState('feed')
+  const [tab, setTab] = useState('warroom')
   const [time, setTime] = useState('')
 
   useEffect(() => {
@@ -755,16 +692,16 @@ export default function Page() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#C0392B] animate-pulse-red" />
-              <span className="font-mono font-bold text-sm tracking-wider text-[#E8E8E8]">GEOINT</span>
-              <span className="text-[10px] text-[#6B7280] font-mono hidden sm:inline">GLOBAL INTELLIGENCE</span>
+              <span className="font-mono font-black tracking-widest text-sm text-[#E8E8E8]">GEOINT</span>
+              <span className="text-[10px] text-[#C0392B] font-mono border border-[#C0392B44] px-1.5 py-0.5 rounded hidden sm:inline">LIVE</span>
             </div>
-            <div className="text-[10px] font-mono text-[#6B7280]">{time}</div>
+            <div className="text-[10px] font-mono text-[#6B7280] hidden sm:block">{time}</div>
           </div>
           {/* Desktop tabs */}
-          <div className="hidden sm:flex gap-0 mt-2 border-b border-[#1E1E28] -mb-px">
+          <div className="hidden sm:flex gap-0 mt-2 border-b border-[#1E1E28] -mb-px overflow-x-auto">
             {TABS.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`px-4 py-2 text-xs font-mono transition-all ${tab === t.id ? 'tab-active text-[#00D4FF]' : 'text-[#6B7280] hover:text-[#E8E8E8] border-b-2 border-transparent'}`}>
+                className={`px-3 py-2 text-xs font-mono whitespace-nowrap transition-all ${tab === t.id ? 'border-b-2 border-[#00D4FF] text-[#00D4FF]' : 'text-[#6B7280] hover:text-[#E8E8E8] border-b-2 border-transparent'}`}>
                 {t.icon} {t.label}
               </button>
             ))}
@@ -774,9 +711,15 @@ export default function Page() {
 
       {/* Content */}
       <main className="max-w-2xl mx-auto px-4 py-4">
+        {tab === 'warroom' && <WarRoom />}
+        {tab === 'map' && (
+          <Suspense fallback={<div className="flex items-center justify-center py-16 gap-3"><div className="w-5 h-5 border-2 border-[#00D4FF] border-t-transparent rounded-full animate-spin" /><span className="text-[#6B7280] font-mono text-sm">Loading situation map…</span></div>}>
+            <SituationMap />
+          </Suspense>
+        )}
         {tab === 'feed' && <FeedTab />}
         {tab === 'nations' && <NationsTab />}
-        {tab === 'war' && <WarStatsTab />}
+        {tab === 'stats' && <WarStatsTab />}
         {tab === 'markets' && <MarketsTab />}
         {tab === 'nuclear' && <NuclearTab />}
       </main>
@@ -784,7 +727,7 @@ export default function Page() {
       {/* Mobile bottom nav */}
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-[#141418] border-t border-[#1E1E28] z-50">
         <div className="flex">
-          {TABS.map(t => (
+          {MOBILE_TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className="flex-1 flex flex-col items-center py-2 gap-0.5 transition-all"
               style={{ color: tab === t.id ? '#00D4FF' : '#6B7280' }}>
